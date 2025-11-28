@@ -2,7 +2,7 @@ const TelegramBot = require("node-telegram-bot-api");
 require("dotenv").config();
 // 🚀 وارد کردن کتابخانه‌های لازم
 const OpenAI = require("openai"); 
-// 💾 استفاده از promises برای عملیات نامتقارن فایل
+// 💾 استفاده از promises برای عملیات نامتقارن فایل (برای رفع خطای سرور)
 const fs = require('fs').promises; // 👈 تغییر مهم: استفاده از promises
 const path = require('path');
 
@@ -37,7 +37,7 @@ console.log("Bot running...");
 // 💾 توابع مدیریت فایل‌ها و پایداری داده (نامتقارن)
 // ----------------------------------------------------
 
-// 1. ذخیره پرفروش‌ها (نامتقارن)
+// 1. ذخیره پرفروش‌ها (نامتقارن) - حالا شامل توضیحات است
 async function saveBestsellersToFile(books) {
     try {
         await fs.writeFile(BESTSELLERS_FILE, JSON.stringify(books, null, 2), 'utf8');
@@ -101,12 +101,12 @@ async function loadUsersFromFile() {
     await saveUsersToFile();
 }
 
-// 5. افزودن کاربر جدید (باید فراخوانی شود)
+// 5. افزودن کاربر جدید (نامتقارن)
 async function addUser(chatId) {
     const id = chatId.toString(); 
     if (!CHAT_USERS.includes(id)) {
         CHAT_USERS.push(id);
-        await saveUsersToFile(); // 👈 فراخوانی نامتقارن
+        await saveUsersToFile(); 
     }
 }
 
@@ -127,7 +127,7 @@ async function getBookRecommendation(query) {
     
     /* کدهای اصلی تماس با OpenAI در اینجا قرار داشتند:
     try {
-        const completion = await openai.chat.completions.create({...
+        // ...
         return completion.choices[0].message.content; 
     } catch (error) {
         console.error("خطا در ارتباط با OpenAI:", error);
@@ -135,6 +135,7 @@ async function getBookRecommendation(query) {
     }
     */
 }
+
 
 // ----------------------------------------------------
 // --- منطق اصلی پیام‌ها (bot.on('message')) ---
@@ -153,7 +154,7 @@ bot.on("message", async (msg) => {
   const chatId = msg.chat.id;
   const text = (msg.text || "").trim();
   
-  // 1. 🛑 منطق پاسخگویی ادمین (بدون تغییر)
+  // 1. 🛑 منطق پاسخگویی ادمین (اصلاح شده)
   if (chatId.toString() === ADMIN_ID.toString() && msg.reply_to_message) {
     const repliedMessageId = msg.reply_to_message.message_id;
     const mapData = forwardedMessagesMap[repliedMessageId];
@@ -213,23 +214,21 @@ ${replyText}`,
   // 3. 📢 منطق Broadcast (ارسال پیام به همه)
   if (waiting[chatId] === 'broadcast_message') {
     if (chatId.toString() !== ADMIN_ID.toString()) return;
-
-    waiting[chatId] = null;
+    
+    waiting[chatId] = null; 
+    const usersToSendTo = [...CHAT_USERS]; // کپی از لیست کاربران
     let successCount = 0;
     
-    // کپی از لیست کاربران برای جلوگیری از تغییر در حین ارسال
-    const usersToSendTo = [...CHAT_USERS];
+    await bot.sendMessage(ADMIN_ID, `⏳ عملیات ارسال به ${CHAT_USERS.length} کاربر شروع شد...`);
 
     for (const targetId of usersToSendTo) {
         try {
-            // اطمینان از عدم ارسال به خود ادمین
             if (targetId !== ADMIN_ID.toString()) {
                 await bot.sendMessage(targetId, text);
                 successCount++;
             }
         } catch (error) {
             console.error(`Error sending message to ${targetId}:`, error.message);
-            // در صورت بلاک شدن، کاربر از لیست حذف می‌شود (در آینده)
         }
     }
 
@@ -269,7 +268,7 @@ ${replyText}`,
   // 6. /start
   if (text === "/start") {
     waiting[chatId] = null; 
-    await addUser(chatId); 
+    await addUser(chatId); // 👈 استفاده از await
 
     const welcomeMessage = `سلام ${msg.from.first_name || ""}! به ربات کتابفروشی بوف خوش آمدید.
 از طریق دکمه‌های زیر می‌توانید با منوی اصلی تعامل کنید.`;
@@ -282,7 +281,7 @@ ${replyText}`,
     });
   }
   
-  // 7. 🛠️ فرمان‌های ادمین
+  // 7. 🛠️ فرمان‌های ادمین (بدون تغییر)
   if (text === "/setbestsellers" && chatId.toString() === ADMIN_ID.toString()) {
     waiting[chatId] = 'set_bestsellers';
     return bot.sendMessage(chatId, `لطفاً لیست پرفروش‌های جدید را به صورت زیر و در خطوط جداگانه ارسال کنید:
@@ -324,7 +323,6 @@ ${replyText}`,
         ]);
     });
     
-    // 🆕 اضافه شدن دکمه بازگشت به منو به صورت شیشه‌ای
     inlineKeyboard.push([{ text: "🏠 بازگشت به منوی اصلی", callback_data: "back_to_menu" }]);
 
     return bot.sendMessage(chatId, messageText, {
@@ -398,7 +396,7 @@ bot.on('callback_query', async (callbackQuery) => {
     const data = callbackQuery.data;
     const messageId = callbackQuery.message.message_id;
 
-    await bot.answerCallbackQuery(callbackQuery.id); // 👈 بستن اعلان
+    await bot.answerCallbackQuery(callbackQuery.id); 
 
     // 1. 🆕 نمایش توضیحات کتاب
     if (data.startsWith('book_desc_')) {
@@ -462,8 +460,6 @@ bot.on('callback_query', async (callbackQuery) => {
             },
         });
         
-        // حذف پیام قبلی (شیشه‌ای) برای تمیزکاری
-        // در صورت عدم موفقیت، صرفاً خطا نادیده گرفته می‌شود.
         await bot.deleteMessage(chatId, messageId).catch(() => {});
     }
 });
